@@ -50,7 +50,7 @@ async function startBot() {
       let reply = '🔧 Available Tools for Rent:\n';
       toolsSnapshot.forEach(doc => {
         const tool = doc.data();
-        reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} mins\n`;
+        reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} hours\n`;
       });
       await sock.sendMessage(sender, { text: reply });
 
@@ -84,7 +84,7 @@ async function startBot() {
       }
 
       const tool = foundDoc.data();
-      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} hours`;
       await sock.sendMessage(sender, { text: reply });
 
     } else if (command.endsWith('_status')) {
@@ -98,7 +98,7 @@ async function startBot() {
       }
 
       const tool = doc.data();
-      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} hours`;
       await sock.sendMessage(sender, { text: reply });
 
     } else {
