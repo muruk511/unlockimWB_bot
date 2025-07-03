@@ -1,9 +1,15 @@
 require('dotenv').config();
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const { db } = require('./firebase');
+const {
+  default: makeWASocket,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  useSingleFileAuthState,
+} = require('@whiskeysockets/baileys');
 const P = require('pino');
+const { db } = require('./firebase');
 
-const { state, saveState } = useSingleFileAuthState(process.env.SESSION_FILE);
+const SESSION_FILE_PATH = process.env.SESSION_FILE || './session.json';
+const { state, saveState } = useSingleFileAuthState(SESSION_FILE_PATH);
 
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
@@ -18,7 +24,8 @@ async function startBot() {
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect =
+        (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
       console.log('Connection closed. Reconnecting:', shouldReconnect);
       if (shouldReconnect) startBot();
     } else if (connection === 'open') {
