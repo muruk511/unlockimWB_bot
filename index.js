@@ -64,9 +64,9 @@ async function startBot() {
       }
 
       const toolName = parts.slice(1).join(' ');
-      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1).toLowerCase();
-
+      const formattedName = toolName.trim(); // Use exactly what the user typed
       const doc = await db.collection('tools').doc(formattedName).get();
+
 
       if (!doc.exists) {
         await sock.sendMessage(sender, { text: `❌ Tool "${formattedName}" not found.` });
