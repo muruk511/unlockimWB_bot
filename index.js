@@ -1,9 +1,7 @@
 require('dotenv').config();
-const http = require('http');
 const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { db } = require('./firebase');
 const P = require('pino');
-const fs = require('fs');
 
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
@@ -53,45 +51,76 @@ async function startBot() {
         reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} mins\n`;
       });
       await sock.sendMessage(sender, { text: reply });
-    } else if (command.endsWith('_status')) {
-      const toolName = command.replace('_status', '');
-      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
-      const doc = await db.collection('tools').doc(formattedName).get();
 
+    } else if (command.startsWith('/rent_tool ')) {
+      const toolName = command.replace('/rent_tool ', '').trim();
+      if (!toolName) {
+        await sock.sendMessage(sender, { text: 'Please specify the tool name. Usage: /rent_tool <toolname>' });
+        return;
+      }
+      const docRef = db.collection('tools').doc(toolName.charAt(0).toUpperCase() + toolName.slice(1));
+      const doc = await docRef.get();
       if (!doc.exists) {
         await sock.sendMessage(sender, { text: 'Tool not found.' });
         return;
       }
+      const tool = doc.data();
+      if (tool.status !== 'available') {
+        await sock.sendMessage(sender, { text: `${tool.name} is currently in use.` });
+        return;
+      }
+      // Update tool status to in_use
+      await docRef.update({ status: 'in_use' });
+      await sock.sendMessage(sender, { text: `You have successfully rented ${tool.name} for PGK ${tool.price} for ${tool.duration} minutes.` });
 
+    } else if (command.startsWith('/return_tool ')) {
+      const toolName = command.replace('/return_tool ', '').trim();
+      if (!toolName) {
+        await sock.sendMessage(sender, { text: 'Please specify the tool name. Usage: /return_tool <toolname>' });
+        return;
+      }
+      const docRef = db.collection('tools').doc(toolName.charAt(0).toUpperCase() + toolName.slice(1));
+      const doc = await docRef.get();
+      if (!doc.exists) {
+        await sock.sendMessage(sender, { text: 'Tool not found.' });
+        return;
+      }
+      const tool = doc.data();
+      if (tool.status === 'available') {
+        await sock.sendMessage(sender, { text: `${tool.name} is not currently rented.` });
+        return;
+      }
+      // Update tool status to available
+      await docRef.update({ status: 'available' });
+      await sock.sendMessage(sender, { text: `Thank you for returning ${tool.name}. It is now available for others.` });
+
+    } else if (command.endsWith('_status') || command.startsWith('/status ')) {
+      let toolName = '';
+      if (command.endsWith('_status')) {
+        toolName = command.replace('_status', '').trim();
+      } else if (command.startsWith('/status ')) {
+        toolName = command.replace('/status ', '').trim();
+      }
+      if (!toolName) {
+        await sock.sendMessage(sender, { text: 'Please specify the tool name. Usage: /status <toolname> or /<toolname>_status' });
+        return;
+      }
+      const docRef = db.collection('tools').doc(toolName.charAt(0).toUpperCase() + toolName.slice(1));
+      const doc = await docRef.get();
+      if (!doc.exists) {
+        await sock.sendMessage(sender, { text: 'Tool not found.' });
+        return;
+      }
       const tool = doc.data();
       const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
       await sock.sendMessage(sender, { text: reply });
+
     } else {
       await sock.sendMessage(sender, {
-        text: `❗ Unknown command.\nTry:\n/tool_rental\n/UnlockTool_status`
+        text: `❗ Unknown command.\nTry:\n/tool_rental\n/rent_tool <toolname>\n/return_tool <toolname>\n/status <toolname>\n/<toolname>_status`
       });
     }
   });
-
-  console.log('WhatsApp bot started');
 }
 
-// Start the bot (no change)
 startBot();
-
-// Start a simple HTTP server to satisfy Render's port binding requirement:
-const PORT = process.env.PORT || 1000;
-
-const server = http.createServer((req, res) => {
-  if (req.url === '/') {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.end('Unlockim Fone PNG WhatsApp Bot is running\n');
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-});
-
-server.listen(PORT, () => {
-  console.log(`HTTP server listening on port ${PORT}`);
-});
