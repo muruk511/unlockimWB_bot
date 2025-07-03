@@ -1,13 +1,13 @@
 {
   "name": "unlockimbot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot for Unlockim Fone PNG",
+  "description": "WhatsApp bot for Unlockim Fone PNG",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.19-alpha.0",
+    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys",
     "dotenv": "^16.3.1",
     "pino": "^8.15.0",
     "firebase-admin": "^11.10.1"
