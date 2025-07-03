@@ -5,6 +5,8 @@ const { db } = require('./firebase');
 const P = require('pino');
 const fs = require('fs');
 
+const knownUsers = new Set(); // Track users who received intro
+
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState('./auth');
@@ -45,22 +47,31 @@ async function startBot() {
 
     const command = text.trim().toLowerCase();
 
+    // Intro message for new users
+    if (!knownUsers.has(sender)) {
+      knownUsers.add(sender);
+      const intro = `👋 Welcome to Unlockim Fone PNG WhatsApp Bot!
+
+I can help you with tool rentals and info.
+
+Try these commands:
+🛠️ /tool_rental – List available tools  
+🔍 /tool_status <ToolName> – Check tool info  
+⚡ /<ToolName>_status – Quick check by name
+
+Example:
+➡ /tool_status UnlockTool  
+➡ /UnlockTool_status`;
+
+      await sock.sendMessage(sender, { text: intro });
+    }
+
     if (command === '/tool_rental') {
       const toolsSnapshot = await db.collection('tools').get();
       let reply = '🔧 Available Tools for Rent:\n';
       toolsSnapshot.forEach(doc => {
         const tool = doc.data();
-        let rateInfo = '';
-        if (tool.rates) {
-          for (const [hrs, price] of Object.entries(tool.rates)) {
-            rateInfo += `${hrs}h = PGK ${price}, `;
-          }
-          rateInfo = rateInfo.slice(0, -2); // Remove trailing comma
-        } else {
-          rateInfo = 'No rate info';
-        }
-
-        reply += `\n${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'}\nRates: ${rateInfo}\n`;
+        reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} hours\n`;
       });
       await sock.sendMessage(sender, { text: reply });
 
@@ -94,17 +105,7 @@ async function startBot() {
       }
 
       const tool = foundDoc.data();
-      let rateInfo = '';
-      if (tool.rates) {
-        for (const [hrs, price] of Object.entries(tool.rates)) {
-          rateInfo += `${hrs}h = PGK ${price}, `;
-        }
-        rateInfo = rateInfo.slice(0, -2);
-      } else {
-        rateInfo = 'No rate info';
-      }
-
-      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nRates: ${rateInfo}`;
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} hours`;
       await sock.sendMessage(sender, { text: reply });
 
     } else if (command.endsWith('_status')) {
@@ -118,33 +119,29 @@ async function startBot() {
       }
 
       const tool = doc.data();
-      let rateInfo = '';
-      if (tool.rates) {
-        for (const [hrs, price] of Object.entries(tool.rates)) {
-          rateInfo += `${hrs}h = PGK ${price}, `;
-        }
-        rateInfo = rateInfo.slice(0, -2);
-      } else {
-        rateInfo = 'No rate info';
-      }
-
-      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nRates: ${rateInfo}`;
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} hours`;
       await sock.sendMessage(sender, { text: reply });
 
     } else {
-      await sock.sendMessage(sender, {
-        text: `❗ Unknown command.\nTry:\n/tool_rental\n/tool_status UnlockTool\n/UnlockTool_status`
-      });
+      const funnyReply = `🤖 Bleep bloop... I'm just a humble WhatsApp robot, not a real human (yet 😅).
+
+Here’s what I *can* do though:
+
+🛠️ /tool_rental – List available tools  
+🔍 /tool_status <ToolName> – Check a specific tool’s status  
+⚡ /<ToolName>_status – Shortcut to check a tool by name
+
+Try one of those and I’ll show you what I’ve got! 💪`;
+      await sock.sendMessage(sender, { text: funnyReply });
     }
   });
 
   console.log('WhatsApp bot started');
 }
 
-// Start the bot
 startBot();
 
-// Start a simple HTTP server for Render
+// Simple HTTP server for Render
 const PORT = process.env.PORT || 1000;
 
 const server = http.createServer((req, res) => {
