@@ -1,37 +1,28 @@
 require('dotenv').config();
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
-const fs = require('fs');
-const P = require('pino');
+const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { db } = require('./firebase');
-
-const SESSION_FILE_PATH = './session.json';
-
-// Load session if exists
-let authState = {};
-if (fs.existsSync(SESSION_FILE_PATH)) {
-  authState = JSON.parse(fs.readFileSync(SESSION_FILE_PATH));
-}
-
-// Save session
-function saveAuthState(state) {
-  fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(state, null, 2));
-}
+const P = require('pino');
+const fs = require('fs');
 
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
+  const { state, saveCreds } = await useMultiFileAuthState('./auth');
 
   const sock = makeWASocket({
     version,
-    auth: authState,
-    printQRInTerminal: true,
-    logger: P({ level: 'silent' })
+    auth: state,
+    logger: P({ level: 'silent' }),
   });
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('📱 Scan this QR in WhatsApp: ', qr);
+    }
+
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log('Connection closed. Reconnecting:', shouldReconnect);
       if (shouldReconnect) startBot();
     } else if (connection === 'open') {
@@ -39,10 +30,7 @@ async function startBot() {
     }
   });
 
-  sock.ev.on('creds.update', (newCreds) => {
-    authState = newCreds;
-    saveAuthState(newCreds);
-  });
+  sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
