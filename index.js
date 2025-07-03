@@ -1,4 +1,5 @@
 require('dotenv').config();
+const http = require('http');
 const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { db } = require('./firebase');
 const P = require('pino');
@@ -71,6 +72,26 @@ async function startBot() {
       });
     }
   });
+
+  console.log('WhatsApp bot started');
 }
 
+// Start the bot (no change)
 startBot();
+
+// Start a simple HTTP server to satisfy Render's port binding requirement:
+const PORT = process.env.PORT || 1000;
+
+const server = http.createServer((req, res) => {
+  if (req.url === '/') {
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('Unlockim Fone PNG WhatsApp Bot is running\n');
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
