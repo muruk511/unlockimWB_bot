@@ -1,0 +1,11 @@
+# Ignore node modules
+node_modules/
+
+# Ignore dotenv files
+.env
+
+# Ignore Firebase credentials
+firebase-service-account.json
+
+# Ignore WhatsApp session state folder
+auth/
