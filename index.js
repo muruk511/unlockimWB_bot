@@ -43,7 +43,7 @@ async function startBot() {
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
     if (!text) return;
 
-    const command = text.trim();
+    const command = text.trim().toLowerCase();
 
     if (command === '/tool_rental') {
       const toolsSnapshot = await db.collection('tools').get();
@@ -55,7 +55,7 @@ async function startBot() {
       await sock.sendMessage(sender, { text: reply });
 
     } else if (command.startsWith('/tool_status')) {
-      const parts = command.split(' ');
+      const parts = text.trim().split(' ');
       if (parts.length < 2) {
         await sock.sendMessage(sender, {
           text: '❗ Please provide a tool name.\nExample: /tool_status UnlockTool'
@@ -63,27 +63,37 @@ async function startBot() {
         return;
       }
 
-      const toolName = parts.slice(1).join(' ');
-      const formattedName = toolName.trim(); // Use exactly what the user typed
-      const doc = await db.collection('tools').doc(formattedName).get();
+      const rawToolName = parts.slice(1).join(' ');
+      const searchKey = rawToolName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
+      const toolsSnapshot = await db.collection('tools').get();
+      let foundDoc = null;
 
-      if (!doc.exists) {
-        await sock.sendMessage(sender, { text: `❌ Tool "${formattedName}" not found.` });
+      toolsSnapshot.forEach(doc => {
+        const normalizedId = doc.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        if (normalizedId === searchKey) {
+          foundDoc = doc;
+        }
+      });
+
+      if (!foundDoc) {
+        await sock.sendMessage(sender, {
+          text: `❌ Tool "${rawToolName}" not found.\nCheck spelling or try /tool_rental to see available tools.`
+        });
         return;
       }
 
-      const tool = doc.data();
+      const tool = foundDoc.data();
       const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
       await sock.sendMessage(sender, { text: reply });
 
     } else if (command.endsWith('_status')) {
       const toolName = command.replace('_status', '');
-      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1).toLowerCase();
+      const formattedName = toolName.trim();
       const doc = await db.collection('tools').doc(formattedName).get();
 
       if (!doc.exists) {
-        await sock.sendMessage(sender, { text: 'Tool not found.' });
+        await sock.sendMessage(sender, { text: `Tool "${formattedName}" not found.` });
         return;
       }
 
@@ -104,12 +114,12 @@ async function startBot() {
 // Start the bot
 startBot();
 
-// Required HTTP server for Render
+// Start a simple HTTP server for Render
 const PORT = process.env.PORT || 1000;
 
 const server = http.createServer((req, res) => {
   if (req.url === '/') {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Unlockim Fone PNG WhatsApp Bot is running\n');
   } else {
     res.writeHead(404);
