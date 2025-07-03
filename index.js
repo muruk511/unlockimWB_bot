@@ -1,30 +1,33 @@
-const http = require('http');
-const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+require('dotenv').config();
+const express = require('express');
+const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const P = require('pino');
 
-// Minimal HTTP server to keep Render happy
-const port = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Bot is running');
-}).listen(port, () => {
-  console.log(`HTTP server listening on port ${port}`);
-});
+const app = express();
+const PORT = process.env.PORT || 10000;
+const SESSION_FILE_PATH = process.env.SESSION_FILE_PATH || './session.json';
 
-// Your WhatsApp bot function
+// Initialize Baileys auth state
+const { state, saveState } = useSingleFileAuthState(SESSION_FILE_PATH);
+
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    printQRInTerminal: true, // or handle QR differently based on your preference
+    auth: state,
     logger: P({ level: 'silent' }),
   });
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('Scan this QR code with your WhatsApp:', qr);
+    }
+
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log('Connection closed. Reconnecting:', shouldReconnect);
       if (shouldReconnect) startBot();
     } else if (connection === 'open') {
@@ -32,24 +35,14 @@ async function startBot() {
     }
   });
 
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+  sock.ev.on('creds.update', saveState);
 
-    const sender = msg.key.remoteJid;
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-    if (!text) return;
-
-    const command = text.trim().toLowerCase();
-
-    // Your commands here
-    if (command === '/tool_rental') {
-      await sock.sendMessage(sender, { text: 'Here is the list of tools...' });
-    } else {
-      await sock.sendMessage(sender, { text: 'Unknown command.' });
-    }
-  });
+  // Add your message handler below...
 }
 
-startBot();
+app.get('/ping', (req, res) => res.send('pong'));
+
+app.listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+  startBot().catch(err => console.error('Error starting bot:', err));
+});
