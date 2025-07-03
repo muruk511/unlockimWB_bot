@@ -1,17 +1,13 @@
 require('dotenv').config();
-const express = require('express');
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const http = require('http');
+const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { db } = require('./firebase');
 const P = require('pino');
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-const SESSION_FILE_PATH = process.env.SESSION_FILE_PATH || './session.json';
-
-// Initialize Baileys auth state
-const { state, saveState } = useSingleFileAuthState(SESSION_FILE_PATH);
+const fs = require('fs');
 
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
+  const { state, saveCreds } = await useMultiFileAuthState('./auth');
 
   const sock = makeWASocket({
     version,
@@ -23,7 +19,7 @@ async function startBot() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('Scan this QR code with your WhatsApp:', qr);
+      console.log('📱 Scan this QR in WhatsApp: ', qr);
     }
 
     if (connection === 'close') {
@@ -31,18 +27,71 @@ async function startBot() {
       console.log('Connection closed. Reconnecting:', shouldReconnect);
       if (shouldReconnect) startBot();
     } else if (connection === 'open') {
-      console.log('WhatsApp connection opened');
+      console.log('✅ WhatsApp bot connected.');
     }
   });
 
-  sock.ev.on('creds.update', saveState);
+  sock.ev.on('creds.update', saveCreds);
 
-  // Add your message handler below...
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
+
+    const sender = msg.key.remoteJid;
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (!text) return;
+
+    const command = text.trim().toLowerCase();
+
+    if (command === '/tool_rental') {
+      const toolsSnapshot = await db.collection('tools').get();
+      let reply = '🔧 Available Tools for Rent:\n';
+      toolsSnapshot.forEach(doc => {
+        const tool = doc.data();
+        reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} mins\n`;
+      });
+      await sock.sendMessage(sender, { text: reply });
+    } else if (command.endsWith('_status')) {
+      const toolName = command.replace('_status', '');
+      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+      const doc = await db.collection('tools').doc(formattedName).get();
+
+      if (!doc.exists) {
+        await sock.sendMessage(sender, { text: 'Tool not found.' });
+        return;
+      }
+
+      const tool = doc.data();
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
+      await sock.sendMessage(sender, { text: reply });
+    } else {
+      await sock.sendMessage(sender, {
+        text: `❗ Unknown command.\nTry:\n/tool_rental\n/UnlockTool_status`
+      });
+    }
+  });
+
+  console.log('WhatsApp bot started');
 }
 
-app.get('/ping', (req, res) => res.send('pong'));
+// Start the bot (no change)
+startBot();
 
-app.listen(PORT, () => {
+// Start a simple HTTP server to satisfy Render's port binding requirement:
+const PORT = process.env.PORT || 1000;
+
+const server = http.createServer((req, res) => {
+  if (req.url === '/') {
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('Unlockim Fone PNG WhatsApp Bot is running\n');
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+server.listen(PORT, () => {
   console.log(`HTTP server listening on port ${PORT}`);
-  startBot().catch(err => console.error('Error starting bot:', err));
 });
