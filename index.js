@@ -43,7 +43,7 @@ async function startBot() {
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
     if (!text) return;
 
-    const command = text.trim().toLowerCase();
+    const command = text.trim();
 
     if (command === '/tool_rental') {
       const toolsSnapshot = await db.collection('tools').get();
@@ -53,9 +53,33 @@ async function startBot() {
         reply += `${tool.name}: ${tool.status === 'available' ? '✅' : '❌ In Use'} - PGK ${tool.price} / ${tool.duration} mins\n`;
       });
       await sock.sendMessage(sender, { text: reply });
+
+    } else if (command.startsWith('/tool_status')) {
+      const parts = command.split(' ');
+      if (parts.length < 2) {
+        await sock.sendMessage(sender, {
+          text: '❗ Please provide a tool name.\nExample: /tool_status UnlockTool'
+        });
+        return;
+      }
+
+      const toolName = parts.slice(1).join(' ');
+      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1).toLowerCase();
+
+      const doc = await db.collection('tools').doc(formattedName).get();
+
+      if (!doc.exists) {
+        await sock.sendMessage(sender, { text: `❌ Tool "${formattedName}" not found.` });
+        return;
+      }
+
+      const tool = doc.data();
+      const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
+      await sock.sendMessage(sender, { text: reply });
+
     } else if (command.endsWith('_status')) {
       const toolName = command.replace('_status', '');
-      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+      const formattedName = toolName.charAt(0).toUpperCase() + toolName.slice(1).toLowerCase();
       const doc = await db.collection('tools').doc(formattedName).get();
 
       if (!doc.exists) {
@@ -66,9 +90,10 @@ async function startBot() {
       const tool = doc.data();
       const reply = `🔍 ${tool.name} Status:\nStatus: ${tool.status === 'available' ? '✅ Available' : '❌ In Use'}\nPrice: PGK ${tool.price}\nDuration: ${tool.duration} mins`;
       await sock.sendMessage(sender, { text: reply });
+
     } else {
       await sock.sendMessage(sender, {
-        text: `❗ Unknown command.\nTry:\n/tool_rental\n/UnlockTool_status`
+        text: `❗ Unknown command.\nTry:\n/tool_rental\n/tool_status UnlockTool\n/UnlockTool_status`
       });
     }
   });
@@ -76,10 +101,10 @@ async function startBot() {
   console.log('WhatsApp bot started');
 }
 
-// Start the bot (no change)
+// Start the bot
 startBot();
 
-// Start a simple HTTP server to satisfy Render's port binding requirement:
+// Required HTTP server for Render
 const PORT = process.env.PORT || 1000;
 
 const server = http.createServer((req, res) => {
